@@ -21,9 +21,9 @@ TODO: simplify/improve
 
 In order to initiate a blockchain upgrade, the first step is for the validators to agree on it. This is done via a upgrade-proposal vote. 
 
-    vaiotd tx gov submit-proposal software-upgrade v2 --upgrade-height 42069 --from my_validator --keyring-backend test --title tit --description desc 
-    vaiotd tx gov deposit 1 10000000stake --from my_validator --keyring-backend test 
-    vaiotd tx gov vote 1 yes --from my_validator --keyring-backend test
+    blogd tx gov submit-proposal software-upgrade v2 --upgrade-height 42069 --from my_validator --keyring-backend test --title tit --description desc 
+    blogd tx gov deposit 1 10000000stake --from my_validator --keyring-backend test 
+    blogd tx gov vote 1 yes --from my_validator --keyring-backend test
 
 Few caveats:
 
