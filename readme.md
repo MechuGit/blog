@@ -1,14 +1,24 @@
 ## Chain initialization
+Scripts included, run in order: 
+(m1/2 = machine 1/2)
 
-## Migration Process: Old vs New
+(m1) init_chain_slave.sh
+(m1) init_gentx_slave.sh                                 (copy slave gentx to shared space)
 
-couple of words on old process: TODO
+(m2) init_chain_master.sh
+(m2) cp /workspaces/vaiot_blog/blog/gentxs/* ~/.blog/config/gentx
+(m2) blogd add-genesis-account <slave_addr> 100000000000stake
+(m2) init_gentx_master.sh                                 (run collect-gentxs and copy genesis to shared space)
 
-From now on, we focus on the new process:
+(m1) init_gentx_slave_2.sh                                (pull master's genesis)
 
-## Upgrade Timeline (and voting):
 
-In order to initiate a blockchain upgrade, the first step is for validators to agree on it. This is done via a upgrade-proposal vote. 
+TODO simplify/improve
+
+We focus on the new process (Cosmos-SDK v0.44+)
+## Upgrade Timeline (and Voting):
+
+In order to initiate a blockchain upgrade, the first step is for the validators to agree on it. This is done via a upgrade-proposal vote. 
 
     vaiotd tx gov submit-proposal software-upgrade v2 --upgrade-height 42069 --from my_validator --keyring-backend test --title tit --description desc 
     vaiotd tx gov deposit 1 10000000stake --from my_validator --keyring-backend test 
@@ -16,24 +26,24 @@ In order to initiate a blockchain upgrade, the first step is for validators to a
 
 Few caveats:
 
- - The default voting time is 2 days (which means that once the proposal is submitted, the results are evaluated then)
+ - The default voting time is 2 days (which means that once the proposal is submitted, the results are evaluated only then)
 It's useful for testing to change the original genesis file to lower this time:
 This could be done via:
 `jq '.app_state.gov.voting_params.voting_period = "120s"' genesis.json > temp.json && mv temp.json genesis.json`
  - If proposal refers to an old chain height -> it isn't recorded at all
  - If upgrade voting doesn't end by reaching given height -> the vote is
-   automatically FAILED after the vote time ends
+   automatically FAILED after the voting time ends
 
 Important to understand: 
-Upgrade-proposal is sent to the old blockchain's binary. It the vote passes, the binary automatically stops at the height, scheduling an upgrade. The old binary is completely unaware of the new changes, only the fact it there should be an upgrade performed. (for the old binary it means only that it should store the information about the necessary update and exit) 
-The operator is expected to obtain a new binary which introduces the changes, including all the upgrade handlers and start it.
-This process could be automated using cosmovisor, which is able to stop old binary, either download a new binary (or the code to build) prepare and then restart the chain using the new binary.
+Upgrade-proposal is sent to the old blockchain's binary. It the vote passes, the binary automatically stops at the height, scheduling an upgrade. The old binary is completely unaware of the new changes, only the fact that there should be an upgrade performed. (old binary is expected to store the information about the upgrade-proposal and exit) 
+The operator is expected to obtain a new binary which introduces the changes, including all the upgrade handlers and run it.
+This process could be automated using cosmovisor, which is able to stop old binary, either download a new binary (or the code + build it) and then restart the chain using the new binary.
 
 It's useful to conceptually separate the code necessary to be executed upon restarting the updated binary into 2 areas:
 
 ## "Upgrading an app":
 
-To handle an upgrade, the app needs to set a handler for the upgrade (given it's name declared in the upgrade-proposal) - this is done inside App's constructor:
+To handle an upgrade, the app needs to set a handler for the upgrade (given upgrade's name declared in the upgrade-proposal) - this is done inside App's constructor:
 
     app.UpgradeKeeper.SetUpgradeHandler("newmodule", func(ctx sdk.Context, plan upgradetypes.Plan, vm module.VersionMap) (module.VersionMap, error) { 
 	    //additional app-wide upgrade logic 
