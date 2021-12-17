@@ -1,0 +1,14 @@
+syntax = "proto3";
+package mechu.blog.blog;
+option go_package = "github.com/mechu/blog/x/blog/types";
+
+message Post {
+  string creator = 1;
+  uint64 id = 2;
+  string title = 3; 
+  string body = 4;
+  string body2 = 5;
+  uint64 num = 6;
+  string empty = 7;
+  string newField = 8;
+}

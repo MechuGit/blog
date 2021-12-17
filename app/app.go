@@ -1,6 +1,7 @@
 package app
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -15,6 +16,7 @@ import (
 	"github.com/cosmos/cosmos-sdk/server/api"
 	"github.com/cosmos/cosmos-sdk/server/config"
 	servertypes "github.com/cosmos/cosmos-sdk/server/types"
+	storetypes "github.com/cosmos/cosmos-sdk/store/types"
 	sdk "github.com/cosmos/cosmos-sdk/types"
 	"github.com/cosmos/cosmos-sdk/types/module"
 	"github.com/cosmos/cosmos-sdk/version"
@@ -429,7 +431,68 @@ func New(
 
 	app.mm.RegisterInvariants(&app.CrisisKeeper)
 	app.mm.RegisterRoutes(app.Router(), app.QueryRouter(), encodingConfig.Amino)
-	app.mm.RegisterServices(module.NewConfigurator(app.appCodec, app.MsgServiceRouter(), app.GRPCQueryRouter()))
+	cfg := module.NewConfigurator(app.appCodec, app.MsgServiceRouter(), app.GRPCQueryRouter())
+	app.mm.RegisterServices(cfg)
+
+	app.UpgradeKeeper.SetUpgradeHandler("v2", func(ctx sdk.Context, plan upgradetypes.Plan, vm module.VersionMap) (module.VersionMap, error) {
+		fmt.Printf("%+v", vm)
+		fmt.Printf("MY PLANNNNN\n")
+		fmt.Printf("MY PLANNNNN\n")
+		// ...
+		// do upgrade logic
+		// ...
+
+		// RunMigrations returns the VersionMap
+		// with the updated module ConsensusVersions
+		return app.mm.RunMigrations(ctx, cfg, vm)
+	})
+	app.UpgradeKeeper.SetUpgradeHandler("v3", func(ctx sdk.Context, plan upgradetypes.Plan, vm module.VersionMap) (module.VersionMap, error) {
+		fmt.Printf("%+v", vm)
+		// ...
+		// do APP UPGRAGE LOGIC
+		// ...
+
+		// RunMigrations returns the VersionMap
+		// with the updated module ConsensusVersions
+		return app.mm.RunMigrations(ctx, cfg, vm)
+	})
+	app.UpgradeKeeper.SetUpgradeHandler("v4", func(ctx sdk.Context, plan upgradetypes.Plan, vm module.VersionMap) (module.VersionMap, error) {
+		fmt.Printf("%+v\n", vm)
+		// ...
+		// do APP UPGRAGE LOGIC
+		// ...
+
+		// RunMigrations returns the VersionMap
+		// with the updated module ConsensusVersions
+		return app.mm.RunMigrations(ctx, cfg, vm)
+	})
+	app.UpgradeKeeper.SetUpgradeHandler("vnew2", func(ctx sdk.Context, plan upgradetypes.Plan, vm module.VersionMap) (module.VersionMap, error) {
+		fmt.Printf("%+v\n", vm)
+		// ...
+		// do APP UPGRAGE LOGIC
+		// ...
+
+		// RunMigrations returns the VersionMap
+		// with the updated module ConsensusVersions
+		return app.mm.RunMigrations(ctx, cfg, vm)
+	})
+
+	app.UpgradeKeeper.SetUpgradeHandler("addmodule", func(ctx sdk.Context, plan upgradetypes.Plan, vm module.VersionMap) (module.VersionMap, error) {
+		return app.mm.RunMigrations(ctx, cfg, vm)
+	})
+	upgradeInfo, err := app.UpgradeKeeper.ReadUpgradeInfoFromDisk()
+	if err != nil {
+		panic(err)
+	}
+
+	if upgradeInfo.Name == "addmodule" && !app.UpgradeKeeper.IsSkipHeight(upgradeInfo.Height) {
+		storeUpgrades := storetypes.StoreUpgrades{
+			Added: []string{"mymodule"},
+		}
+
+		// configure store loader that checks if version == upgradeHeight and applies store upgrades
+		app.SetStoreLoader(upgradetypes.UpgradeStoreLoader(upgradeInfo.Height, &storeUpgrades))
+	}
 
 	// initialize stores
 	app.MountKVStores(keys)

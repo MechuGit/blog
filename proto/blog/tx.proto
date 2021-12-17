@@ -7,7 +7,21 @@ option go_package = "github.com/mechu/blog/x/blog/types";
 
 // Msg defines the Msg service.
 service Msg {
-    // this line is used by starport scaffolding # proto/tx/rpc
+      rpc CreatePost(MsgCreatePost) returns (MsgCreatePostResponse);
+// this line is used by starport scaffolding # proto/tx/rpc
+}
+
+message MsgCreatePost {
+  string creator = 1;
+  string title = 2;
+  string body = 3;
+  string body2 = 4;
+  uint64 num = 5;
+  
+}
+
+message MsgCreatePostResponse {
+  uint64 id = 1;
 }
 
 // this line is used by starport scaffolding # proto/tx/message
