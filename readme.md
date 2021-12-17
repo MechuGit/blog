@@ -1,21 +1,22 @@
-## Chain initialization
-Scripts included, run in order: 
-(m1/2 = machine 1/2)
+## In-Place Store Migration (Cosmos-SDK v0.44+) 
 
-(m1) init_chain_slave.sh
-(m1) init_gentx_slave.sh                                 (copy slave gentx to shared space)
-
-(m2) init_chain_master.sh
-(m2) cp /workspaces/vaiot_blog/blog/gentxs/* ~/.blog/config/gentx
-(m2) blogd add-genesis-account <slave_addr> 100000000000stake
-(m2) init_gentx_master.sh                                 (run collect-gentxs and copy genesis to shared space)
-
-(m1) init_gentx_slave_2.sh                                (pull master's genesis)
+## Chain Initialization
+Scripts included, run in this order:
 
 
-TODO simplify/improve
+    (node1): init_chain_slave.sh
+    (node1): init_gentx_slave.sh                                 (copy slave gentx to shared space)
+   
+    (node2): init_chain_master.sh
+    (node2): cp /workspaces/vaiot_blog/blog/gentxs/* ~/.blog/config/gentx
+    (node2): blogd add-genesis-account <slave_addr> 100000000000stake
+    (node2): init_gentx_master.sh                                 (run collect-gentxs and copy genesis to shared space)
 
-We focus on the new process (Cosmos-SDK v0.44+)
+    (node1): init_gentx_slave_2.sh                                (pull master's genesis)
+
+TODO: simplify/improve
+
+
 ## Upgrade Timeline (and Voting):
 
 In order to initiate a blockchain upgrade, the first step is for the validators to agree on it. This is done via a upgrade-proposal vote. 
@@ -116,6 +117,9 @@ More information available here: https://developers.google.com/protocol-buffers/
 
 
 ## Operator View / Cosmovisor
+TODO
+
+## Common Downfalls:
 TODO
 
 
