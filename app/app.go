@@ -93,6 +93,9 @@ import (
 	blogmodule "github.com/mechu/blog/x/blog"
 	blogmodulekeeper "github.com/mechu/blog/x/blog/keeper"
 	blogmoduletypes "github.com/mechu/blog/x/blog/types"
+	nameservicemodule "github.com/mechu/blog/x/nameservice"
+	nameservicemodulekeeper "github.com/mechu/blog/x/nameservice/keeper"
+	nameservicemoduletypes "github.com/mechu/blog/x/nameservice/types"
 	// this line is used by starport scaffolding # stargate/app/moduleImport
 )
 
@@ -144,18 +147,20 @@ var (
 		transfer.AppModuleBasic{},
 		vesting.AppModuleBasic{},
 		blogmodule.AppModuleBasic{},
+		nameservicemodule.AppModuleBasic{},
 		// this line is used by starport scaffolding # stargate/app/moduleBasic
 	)
 
 	// module account permissions
 	maccPerms = map[string][]string{
-		authtypes.FeeCollectorName:     nil,
-		distrtypes.ModuleName:          nil,
-		minttypes.ModuleName:           {authtypes.Minter},
-		stakingtypes.BondedPoolName:    {authtypes.Burner, authtypes.Staking},
-		stakingtypes.NotBondedPoolName: {authtypes.Burner, authtypes.Staking},
-		govtypes.ModuleName:            {authtypes.Burner},
-		ibctransfertypes.ModuleName:    {authtypes.Minter, authtypes.Burner},
+		authtypes.FeeCollectorName:        nil,
+		distrtypes.ModuleName:             nil,
+		minttypes.ModuleName:              {authtypes.Minter},
+		stakingtypes.BondedPoolName:       {authtypes.Burner, authtypes.Staking},
+		stakingtypes.NotBondedPoolName:    {authtypes.Burner, authtypes.Staking},
+		govtypes.ModuleName:               {authtypes.Burner},
+		ibctransfertypes.ModuleName:       {authtypes.Minter, authtypes.Burner},
+		nameservicemoduletypes.ModuleName: {authtypes.Minter, authtypes.Burner, authtypes.Staking},
 		// this line is used by starport scaffolding # stargate/app/maccPerms
 	}
 )
@@ -213,6 +218,8 @@ type App struct {
 	ScopedTransferKeeper capabilitykeeper.ScopedKeeper
 
 	BlogKeeper blogmodulekeeper.Keeper
+
+	NameserviceKeeper nameservicemodulekeeper.Keeper
 	// this line is used by starport scaffolding # stargate/app/keeperDeclaration
 
 	// the module manager
@@ -247,6 +254,7 @@ func New(
 		govtypes.StoreKey, paramstypes.StoreKey, ibchost.StoreKey, upgradetypes.StoreKey, feegrant.StoreKey,
 		evidencetypes.StoreKey, ibctransfertypes.StoreKey, capabilitytypes.StoreKey,
 		blogmoduletypes.StoreKey,
+		nameservicemoduletypes.StoreKey,
 		// this line is used by starport scaffolding # stargate/app/storeKey
 	)
 	tkeys := sdk.NewTransientStoreKeys(paramstypes.TStoreKey)
@@ -352,6 +360,15 @@ func New(
 	)
 	blogModule := blogmodule.NewAppModule(appCodec, app.BlogKeeper)
 
+	app.NameserviceKeeper = *nameservicemodulekeeper.NewKeeper(
+		appCodec,
+		keys[nameservicemoduletypes.StoreKey],
+		keys[nameservicemoduletypes.MemStoreKey],
+
+		app.BankKeeper,
+	)
+	nameserviceModule := nameservicemodule.NewAppModule(appCodec, app.NameserviceKeeper)
+
 	// this line is used by starport scaffolding # stargate/app/keeperDefinition
 
 	// Create static IBC router, add transfer route, then set and seal it
@@ -391,6 +408,7 @@ func New(
 		params.NewAppModule(app.ParamsKeeper),
 		transferModule,
 		blogModule,
+		nameserviceModule,
 		// this line is used by starport scaffolding # stargate/app/appModule
 	)
 
@@ -426,6 +444,7 @@ func New(
 		evidencetypes.ModuleName,
 		ibctransfertypes.ModuleName,
 		blogmoduletypes.ModuleName,
+		nameservicemoduletypes.ModuleName,
 		// this line is used by starport scaffolding # stargate/app/initGenesis
 	)
 
@@ -477,7 +496,7 @@ func New(
 		return app.mm.RunMigrations(ctx, cfg, vm)
 	})
 
-	app.UpgradeKeeper.SetUpgradeHandler("addmodule", func(ctx sdk.Context, plan upgradetypes.Plan, vm module.VersionMap) (module.VersionMap, error) {
+	app.UpgradeKeeper.SetUpgradeHandler("newmodule", func(ctx sdk.Context, plan upgradetypes.Plan, vm module.VersionMap) (module.VersionMap, error) {
 		return app.mm.RunMigrations(ctx, cfg, vm)
 	})
 	upgradeInfo, err := app.UpgradeKeeper.ReadUpgradeInfoFromDisk()
@@ -485,9 +504,9 @@ func New(
 		panic(err)
 	}
 
-	if upgradeInfo.Name == "addmodule" && !app.UpgradeKeeper.IsSkipHeight(upgradeInfo.Height) {
+	if upgradeInfo.Name == "newmodule" && !app.UpgradeKeeper.IsSkipHeight(upgradeInfo.Height) {
 		storeUpgrades := storetypes.StoreUpgrades{
-			Added: []string{"mymodule"},
+			Added: []string{"nameservice"},
 		}
 
 		// configure store loader that checks if version == upgradeHeight and applies store upgrades
@@ -675,6 +694,7 @@ func initParamsKeeper(appCodec codec.BinaryCodec, legacyAmino *codec.LegacyAmino
 	paramsKeeper.Subspace(ibctransfertypes.ModuleName)
 	paramsKeeper.Subspace(ibchost.ModuleName)
 	paramsKeeper.Subspace(blogmoduletypes.ModuleName)
+	paramsKeeper.Subspace(nameservicemoduletypes.ModuleName)
 	// this line is used by starport scaffolding # stargate/app/paramSubspace
 
 	return paramsKeeper
