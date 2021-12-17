@@ -1,56 +1,112 @@
-# blog tralala
-**blog** is a blockchain built using Cosmos SDK and Tendermint and created with [Starport](https://github.com/tendermint/starport).
+## Chain initialization
 
-## Get started
+## Migration Process: Old vs New
 
-```
-starport chain serve
-```
+couple of words on old process: TODO
 
-`serve` command installs dependencies, builds, initializes, and starts your blockchain in development.
+From now on, we focus on the new process:
 
-### Configure
+## Upgrade Timeline (and voting):
 
-Your blockchain in development can be configured with `config.yml`. To learn more, see the [Starport docs](https://docs.starport.network).
+In order to initiate a blockchain upgrade, the first step is for validators to agree on it. This is done via a upgrade-proposal vote. 
 
-### Launch
+    vaiotd tx gov submit-proposal software-upgrade v2 --upgrade-height 42069 --from my_validator --keyring-backend test --title tit --description desc 
+    vaiotd tx gov deposit 1 10000000stake --from my_validator --keyring-backend test 
+    vaiotd tx gov vote 1 yes --from my_validator --keyring-backend test
 
-To launch your blockchain live on multiple nodes, use `starport network` commands. Learn more about [Starport Network](https://github.com/tendermint/spn).
+Few caveats:
 
-### Web Frontend
+ - The default voting time is 2 days (which means that once the proposal is submitted, the results are evaluated then)
+It's useful for testing to change the original genesis file to lower this time:
+This could be done via:
+`jq '.app_state.gov.voting_params.voting_period = "120s"' genesis.json > temp.json && mv temp.json genesis.json`
+ - If proposal refers to an old chain height -> it isn't recorded at all
+ - If upgrade voting doesn't end by reaching given height -> the vote is
+   automatically FAILED after the vote time ends
 
-Starport has scaffolded a Vue.js-based web app in the `vue` directory. Run the following commands to install dependencies and start the app:
+Important to understand: 
+Upgrade-proposal is sent to the old blockchain's binary. It the vote passes, the binary automatically stops at the height, scheduling an upgrade. The old binary is completely unaware of the new changes, only the fact it there should be an upgrade performed. (for the old binary it means only that it should store the information about the necessary update and exit) 
+The operator is expected to obtain a new binary which introduces the changes, including all the upgrade handlers and start it.
+This process could be automated using cosmovisor, which is able to stop old binary, either download a new binary (or the code to build) prepare and then restart the chain using the new binary.
 
-```
-cd vue
-npm install
-npm run serve
-```
+It's useful to conceptually separate the code necessary to be executed upon restarting the updated binary into 2 areas:
 
-The frontend app is built using the `@starport/vue` and `@starport/vuex` packages. For details, see the [monorepo for Starport front-end development](https://github.com/tendermint/vue).
+## "Upgrading an app":
 
-## Release
-To release a new version of your blockchain, create and push a new tag with `v` prefix. A new draft release with the configured targets will be created.
+To handle an upgrade, the app needs to set a handler for the upgrade (given it's name declared in the upgrade-proposal) - this is done inside App's constructor:
 
-```
-git tag v0.1
-git push origin v0.1
-```
+    app.UpgradeKeeper.SetUpgradeHandler("newmodule", func(ctx sdk.Context, plan upgradetypes.Plan, vm module.VersionMap) (module.VersionMap, error) { 
+	    //additional app-wide upgrade logic 
+	    return app.mm.RunMigrations(ctx, cfg, vm)
+    })
 
-After a draft release is created, make your final changes from the release page and publish it.
+The handler must end with a call to module manager which in turn will run the second part, the intended migration scripts for the modules.
 
-### Install
-To install the latest version of your blockchain node's binary, execute the following command on your machine:
+## "Upgrading a module":
 
-```
-curl https://get.starport.network/mechu/blog@latest! | sudo bash
-```
-`mechu/blog` should match the `username` and `repo_name` of the Github repository to which the source code was pushed. Learn more about [the install process](https://github.com/allinbits/starport-installer).
+A module is responsible for registering it's migration scripts inside the `RegisterService` method:
 
-## Learn more
+    func (am AppModule) RegisterServices(cfg module.Configurator) {
+	    ...
+	    m := keeper.NewMigrator(am.keeper)
+	    err := cfg.RegisterMigration(types.ModuleName, 1, m.Migrate1to2)
+	    if err != nil {
+		    panic(err)
+	    }
+	}
+Notice that the migration function itself is encapsulated in a Migrator object, this is because it has to have a certain signature `(ctx sdk.Context) error` and the migrator is used to passed in any additional information  (usually module's keeper)
 
-- [Starport](https://github.com/tendermint/starport)
-- [Starport Docs](https://docs.starport.network)
-- [Cosmos SDK documentation](https://docs.cosmos.network)
-- [Cosmos SDK Tutorials](https://tutorials.cosmos.network)
-- [Discord](https://discord.gg/cosmosnetwork)
+Every module is characterized by it's code version (integer), this is declared by the module creator in `ConsensusVersion` method:
+
+    func (AppModule) ConsensusVersion() uint64 { return  3 }
+    
+These versions are collected, managed and updated by x/upgrade module. 
+Every module's version is first collected during chain initialization:
+
+    func (app *App) InitChainer(ctx sdk.Context, req abci.RequestInitChain) abci.ResponseInitChain {
+    ...
+    app.UpgradeKeeper.SetModuleVersionMap(ctx, app.mm.GetVersionMap())
+    return app.mm.InitGenesis(ctx, app.appCodec, genesisState)
+    }
+
+Then, whenever an upgrade is scheduled and executed, more specifically inside:
+`app.UpgradeKeeper.SetUpgradeHandler()` -> `module.Manager.RunMigrations()` -> `configurator.runModuleMigrations()` 
+the running module versions are compared to the versions that the modules are currently reporting. For every step of difference (it is required that module versions increase by 1 every time a module introduces a breaking change requiring migration) a proper migration function is automatically executed (registered via the above `cfg.RegisterMigration`)
+
+Caveat: every module with version > 1 is required to have any migration function, even if a certain upgrade does not change that module. Apart from that, of course all functions between old and new version must be registered.
+
+## Adding brand new modules:
+
+Introducing new modules is very similar to the process above. The modules need to be instantiated in every regular place (inside App constructor), which means created, populated with a keeper, added to module manager, added to `SetOrder...` functions, etc.. Then when after the regular `SetUpgradeHandler` in app.go, an additional piece of code is required e.g.:
+    
+    app.UpgradeKeeper.SetUpgradeHandler("newmodule", func(ctx sdk.Context, plan upgradetypes.Plan, vm module.VersionMap) (module.VersionMap, error) {
+	    return app.mm.RunMigrations(ctx, cfg, vm)
+    })
+ 
+    upgradeInfo, err := app.UpgradeKeeper.ReadUpgradeInfoFromDisk() 
+	if err != nil {
+		panic(err)
+    } 
+    if upgradeInfo.Name == "newmodule" && !app.UpgradeKeeper.IsSkipHeight(upgradeInfo.Height) {
+	    storeUpgrades := storetypes.StoreUpgrades{
+		    Added: []string{"nameservice"},
+	    }
+    app.SetStoreLoader(upgradetypes.UpgradeStoreLoader(upgradeInfo.Height, &storeUpgrades))
+    }
+
+## Data changes: (protobuf):
+
+Protocol buffers when used correctly are generally backward (and forward) compatible which means that even if they are to be updated it is usually possible to do so without keeping the old struct definition. 
+-   you must not change the tag numbers nor types of any existing fields.
+-   you may delete fields.
+-   you may add new fields but you must use fresh tag numbers (i.e. tag numbers that were never used in this protocol buffer, not even by deleted fields).
+
+When following these rules, code expecting old structure will happily read new messages and simply ignore any new fields. Code expecting fields that were deleted will simply have their default value. (I guess it should not be affected in any way by cosmos-sdk storage mechanisms)
+More information available here: https://developers.google.com/protocol-buffers/docs/gotutorial#extending-a-protocol-buffer
+
+
+## Operator View / Cosmovisor
+TODO
+
+
+
